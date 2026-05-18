@@ -40,8 +40,10 @@ def recommend(movie_title):
 
 
 st.title("Movie Recommendation System")
-
-movie_name = st.text_input("Enter a movie name")
+movie_name = st.selectbox(
+    "Select a movie",
+    movies['title'].values
+)
 
 if st.button("Recommend"):
     
