@@ -4,8 +4,94 @@ import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-API_KEY = "2a94e9bef9ac248db37a5a1800fd4f92"
+st.markdown("""
+<style>
 
+/* Main app background */
+.stApp {
+    background: linear-gradient(
+        120deg,
+        #ff7e5f,
+        #feb47b,
+        #ff9966
+    );
+
+    color: white;
+}
+/* Main title */
+h1 {
+    color: #E50914 !important;
+    text-align: center;
+    font-size: 3rem !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #111111 !important;
+}
+
+/* Sidebar glass effect */
+[data-testid="stSidebar"] > div:first-child {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+}
+
+/* Dropdown styling */
+div[data-baseweb="select"] > div {
+    background-color: rgba(255,255,255,0.08) !important;
+    border-radius: 12px !important;
+    color: white !important;
+}
+
+/* Input text color */
+input {
+    color: white !important;
+}
+
+/* Recommend button */
+div.stButton > button {
+    background: linear-gradient(90deg, #E50914, #ff4b2b);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 0.6rem 1.2rem;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+/* Button hover */
+div.stButton > button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(90deg, #ff4b2b, #ff416c);
+}
+
+/* Movie captions */
+[data-testid="stCaptionContainer"] {
+    text-align: center;
+    color: white !important;
+    font-size: 14px;
+}
+
+/* Poster image styling */
+img {
+    border-radius: 15px;
+    box-shadow: 0 4px 20px rgba(255,255,255,0.15);
+}
+
+</style>
+""", unsafe_allow_html=True)
+API_KEY = "2a94e9bef9ac248db37a5a1800fd4f92"
+BACKEND_URL = "http://127.0.0.1:8000"
+
+def get_recommendations(movie_title):
+
+    url = f"{BACKEND_URL}/recommend/{movie_title}"
+
+    response = requests.get(url)
+
+    data = response.json()
+
+    return data['recommendations']
 def fetch_poster(tmdb_id):
 
     try:
@@ -15,7 +101,7 @@ def fetch_poster(tmdb_id):
         response = requests.get(url, timeout=10)
 
         data = response.json()
-        print(data)
+        
 
         poster_path = data.get('poster_path')
 
@@ -29,67 +115,69 @@ def fetch_poster(tmdb_id):
 ratings = pd.read_csv('data/ratings.csv')
 movies = pd.read_csv('data/movies.csv')
 links = pd.read_csv('data/links.csv')
+tags = pd.read_csv('data/tags.csv')
 movies = movies.merge(links, on='movieId')
 
+
+tag_data = tags.groupby('movieId')['tag'].apply(
+    lambda x: " ".join(x.astype(str))
+)
+movies = movies.merge(tag_data, on='movieId', how='left')
 movies['genres'] = movies['genres'].fillna('')
+movies['tag'] = movies['tag'].fillna('')
+movies['content'] = (
+    movies['genres'] + " " +
+    movies['genres'] + " " +
+    movies['genres'] + " " +
+    movies['tag']
+)
 
-
-tfidf = TfidfVectorizer(stop_words='english')
-
-tfidf_matrix = tfidf.fit_transform(movies['genres'])
-
-
-cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
 
 
 indices = pd.Series(movies.index, index=movies['title']).drop_duplicates()
 
-def recommend(movie_title):
-    
-    if movie_title not in indices:
-        return ["Movie not found"]
-    
-    idx = indices[movie_title]
-    
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    
-    sim_scores = sim_scores[1:11]
-    
-    movie_indices = [i[0] for i in sim_scores]
-    
-    recommended_movies = []
-    recommended_posters = []
-
-    for i in movie_indices:
-
-        recommended_movies.append(movies.iloc[i].title)
-
-        poster = fetch_poster(movies.iloc[i].tmdbId)
-
-        recommended_posters.append(poster)
-    return recommended_movies, recommended_posters  
 
 
 st.title("Movie Recommendation System")
+st.sidebar.title("About")
+
+st.sidebar.write(
+    "This recommendation system uses TF-IDF vectorization and cosine similarity to suggest similar movies."
+)
 movie_name = st.selectbox(
     "Select a movie",
     movies['title'].values
 )
 
 if st.button("Recommend"):
+
+    with st.spinner("Finding similar movies..."):
     
-    recommended_movies, recommended_posters = recommend(movie_name)
+        recommendations = get_recommendations(movie_name)
 
-    for movie, poster in zip(recommended_movies, recommended_posters):
+        cols = st.columns(5)
 
-        st.subheader(movie)
+    
 
-        if poster:
-            st.image(poster, width=200)
-        else:
-            st.write("Poster not available")
+        for idx, movie in enumerate(recommendations):
 
-    if poster:
-        st.image(poster)
+            with cols[idx % 5]:
+
+                title = movie['title']
+
+                st.caption(title)
+
+                movie_row = movies[movies['title'] == title]
+
+                if not movie_row.empty:
+
+                    tmdb_id = movie_row.iloc[0].tmdbId
+
+                    poster = fetch_poster(tmdb_id)
+
+                    if poster:
+                        st.image(poster)
+                    else:
+                        st.write("Poster not available")
+
+    
